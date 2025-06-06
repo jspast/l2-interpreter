@@ -28,52 +28,156 @@ type expr =
   | Read
   | Print of expr
 
-(* typeInfer : expr -> tipo option *)
 let rec typeInfer (e:expr) : tipo option =
   match e with
+  (* T-INT *)
   | Num n -> Some TyInt
+
+  (* T-BOOL *)
   | Bool b -> Some TyBool
-  | Id e' -> None (* TODO: tipo de um endereço *)
+
+  (* T-OPx *)
+  | Binop (op, e1, e2) -> (match op with
+    | Sum | Sub | Mul | Div -> (match typeInfer e1, typeInfer e2 with
+      | Some TyInt, Some TyInt -> Some TyInt
+      | _ -> None)
+    | Eq | Neq | Lt | Gt | And | Or -> (match typeInfer e1, typeInfer e2 with
+      | Some TyBool, Some TyBool -> Some TyBool
+      | _ -> None))
+
+  (* T-IF *)
   | If (e1, e2, e3) -> (match typeInfer e1 with
     | Some TyBool -> (match typeInfer e2, typeInfer e3 with
       | Some t2, Some t3 -> if t2=t3
         then Some t2 else None
       | _ -> None)
     | _  -> None)
-  | Binop (op, e1, e2) -> (match op with
-    | Sum | Sub | Mul | Div -> (match typeInfer e1, typeInfer e2 with
-      | Some TyInt, Some TyInt -> Some TyInt
-      | _ -> None)
-    | Eq  | Neq | Lt | Gt | And | Or -> (match typeInfer e1, typeInfer e2 with
-      | Some TyBool, Some TyBool -> Some TyBool
-      | _ -> None))
-  | Wh (e1, e2) -> (match typeInfer e1, typeInfer e2 with
-    | Some TyBool, Some TyUnit -> Some TyUnit
-    | _ -> None)
-  | Asg (e1, e2) -> (match typeInfer e1, typeInfer e2 with
-    | Some TyRef t1, Some t2 -> if t1=t2
-      then Some TyUnit else None
-    | _ -> None)
+
+  (* TODO: T-VAR *)
+  | Id e' -> None
+
+  (* T-LET *)
   | Let (x, t, e1, e2) -> (match t, typeInfer e1, typeInfer e2 with
     | t, Some t1, Some t2 -> if t1=t
       then Some t2 else None
     | _ -> None)
-  | New e -> (match typeInfer e with
-    | Some t -> Some t
+
+  (* T-ATR *)
+  | Asg (e1, e2) -> (match typeInfer e1, typeInfer e2 with
+    | Some TyRef t1, Some t2 -> if t1=t2
+      then Some TyUnit else None
     | _ -> None)
+
+  (* T-DEREF *)
   | Deref e -> (match typeInfer e with
     | Some TyRef t -> Some t
     | _ -> None)
+
+  (* T-NEW *)
+  | New e -> (match typeInfer e with
+    | Some t -> Some t
+    | _ -> None)
+
+  (* T-UNIT *)
   | Unit -> Some TyUnit
+
+  (* T-WHILE *)
+  | Wh (e1, e2) -> (match typeInfer e1, typeInfer e2 with
+    | Some TyBool, Some TyUnit -> Some TyUnit
+    | _ -> None)
+
+  (* T-SEQ *)
   | Seq (e1, e2) -> (match typeInfer e1, typeInfer e2 with
     | Some TyUnit, Some t -> Some t
     | _ -> None)
+
+  (* T-READ *)
   | Read -> Some TyInt
+
+  (* T-PRINT *)
   | Print e -> (match typeInfer e with
     | Some TyInt -> Some TyUnit
     | _ -> None)
 
+let is_value (e:expr) : bool =
+  match e with
+  | Num e -> true
+  | Bool e -> true
+  | Id e -> true
+  | _ -> false
 
+let rec step (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int list) :
+                (expr *     (string, expr) Hashtbl.t *     int list *     int list) option =
+  match e with
+  (* OPx *)
+  | Binop (op, Num e1, Num e2) -> (match op with
+    | Sum -> Some (Num (e1 + e2), mem, inp, out)
+    (* TODO: implementar outras operações *)
+    | _ -> None)
+
+  (* OP2 *)
+  | Binop (op, e1, e2) when is_value e1 -> (match step e2 mem inp out with
+    | Some (e2', mem', inp', out') -> Some (Binop (op, e2', e2), mem', inp', out')
+    | _ -> None)
+
+  (* OP1 *)
+  | Binop (op, e1, e2) -> (match step e1 mem inp out with
+    | Some (e1', mem', inp', out') -> Some (Binop (op, e1', e2), mem', inp', out')
+    | _ -> None)
+
+  (* IF1 *)
+  | If (Bool true, e2, e3) -> Some (e2, mem, inp, out)
+
+  (* IF2 *)
+  | If (Bool false, e2, e3) -> Some (e3, mem, inp, out)
+
+  (* IF3 *)
+  | If (e1, e2, e3) -> (match step e1 mem inp out with
+    | Some (e1', mem', inp', out') -> Some (If (e1', e2, e3), mem', inp', out')
+    | _ -> None)
+
+  (* E-LET1 *)
+  | Let (x, t, e1, e2) -> (match step e1 mem inp out with
+    | Some (e1', mem', inp', out') -> Some (Let (x, t, e1', e2), mem', inp', out')
+    | _ -> None)
+
+  (* TODO: E-LET2 *)
+
+  (* ATR1 *)
+  | Asg (Id e1, e2) when is_value e2 && Hashtbl.mem mem e1 -> Hashtbl.replace mem e1 e2; Some (Unit, mem, inp, out)
+
+  (* ATR2 *)
+  | Asg (Id e1, e2) -> (match step e2 mem inp out with
+    | Some (e2', mem', inp', out') -> Some (Asg (Id e1, e2'), mem', inp', out')
+    | _ -> None)
+
+  (* ATR *)
+  | Asg (e1, e2) -> (match step e1 mem inp out with
+    | Some (e1', mem', inp', out') -> Some (Asg (e1', e2), mem', inp', out')
+    | _ -> None)
+
+  (* TODO: DEREF1 *)
+
+  (* TODO: DEREF *)
+
+  (* TODO: NEW1 *)
+
+  (* TODO: NEW *)
+
+  (* TODO: SEQ1 *)
+
+  (* TODO: SEQ *)
+
+  (* E-WHILE *)
+  | Wh (e1, e2) -> Some (If (e1, Seq (e2, Wh (e1, e2)), Unit), mem, inp, out)
+
+  (* TODO: PRINT-N *)
+
+  (* TODO: PRINT *)
+
+  (* TODO: READ *)
+
+  | _ -> None
 
 
 
