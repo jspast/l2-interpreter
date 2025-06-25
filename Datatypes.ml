@@ -47,8 +47,7 @@ let rec typeInfer (e:expr) : tipo option =
       | And | Or -> (match typeInfer e1, typeInfer e2 with 
           | Some TyBool, Some TyBool -> Some TyBool 
           | _ -> None))
-    
-  
+
   (* T-IF *)
   | If (e1, e2, e3) -> (match typeInfer e1 with
       | Some TyBool -> (match typeInfer e2, typeInfer e3 with
@@ -58,7 +57,7 @@ let rec typeInfer (e:expr) : tipo option =
       | _  -> None)
 
   (* TODO: T-VAR *)
-  | Id e' -> 
+  | Id e' -> None
 
   (* T-LET *)
   | Let (x, t, e1, e2) -> (match t, typeInfer e1, typeInfer e2 with
@@ -109,9 +108,9 @@ let is_value (e:expr) : bool =
   | Bool e -> true
   | Id e -> true
   | _ -> false 
-  
+
 (* PROVAVELMENTE NAO ESTÁ CERTO DESCULPA *)
-(* Função para substituição {v/x} e *)    
+(* Função para substituição {v/x} e *)
 let rec subst (x:string) (v:expr) (e:expr) : expr =
   match e with
   | Num _ | Bool _ | Unit -> e
@@ -131,10 +130,10 @@ let rec subst (x:string) (v:expr) (e:expr) : expr =
 
 
 let rec step (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int list) :
-  (expr *     (string, expr) Hashtbl.t *     int list *     int list) option =
+               (expr *     (string, expr) Hashtbl.t *     int list *     int list) option =
   match e with
-  (* OPx *) 
-  
+  (* OPx *)
+
   (* Operacoes com argumentos inteiros *)
   | Binop (op, Num e1, Num e2) -> (match op with
       | Sum -> Some (Num (e1 + e2), mem, inp, out)
@@ -146,25 +145,23 @@ let rec step (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int lis
       | Lt -> Some (Bool (e1 < e2), mem, inp, out)
       | Gt -> Some (Bool (e1 > e2), mem, inp, out)
       | _ -> None)
-    
-  (* Operacoes com argumentos booleanos *)    
+
+  (* Operacoes com argumentos booleanos *)
   | Binop (op, Bool e1, Bool e2) -> (match op with
       | And -> Some (Bool (e1 && e2), mem, inp, out)
       | Or -> Some (Bool (e1 || e2), mem, inp, out)
-      | _ -> None) 
-
-(* OP1 *)
-  | Binop (op, e1, e2) -> (match step e1 mem inp out with
-      | Some (e1', mem', inp', out') -> Some (Binop (op, e1', e2), mem', inp', out')
-      | _ -> None)  
-
+      | _ -> None)
 
 (* OP2 *)
   | Binop (op, e1, e2) when is_value e1 -> (match step e2 mem inp out with
       | Some (e2', mem', inp', out') -> Some (Binop (op, e1, e2'), mem', inp', out')
       | _ -> None)
 
-  
+(* OP1 *)
+  | Binop (op, e1, e2) -> (match step e1 mem inp out with
+      | Some (e1', mem', inp', out') -> Some (Binop (op, e1', e2), mem', inp', out')
+      | _ -> None)
+
   (* IF1 *)
   | If (Bool true, e2, e3) -> Some (e2, mem, inp, out)
 
@@ -176,13 +173,13 @@ let rec step (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int lis
       | Some (e1', mem', inp', out') -> Some (If (e1', e2, e3), mem', inp', out')
       | _ -> None)
 
+  (* TODO: E-LET2 *)
+  | Let (x, t, e1, e2) when is_value e1 -> Some (subst x e1 e2, mem, inp, out)
+
   (* E-LET1 *)
   | Let (x, t, e1, e2) -> (match step e1 mem inp out with
       | Some (e1', mem', inp', out') -> Some (Let (x, t, e1', e2), mem', inp', out')
       | _ -> None)
-
-  (* TODO: E-LET2 *)
-  | Let (x, t, e1, e2) when is_value e1 -> Some (subst x v e2, mem, inp, out)
 
   (* ATR1 *)
   | Asg (Id e1, e2) when is_value e2 && Hashtbl.mem mem e1 -> Hashtbl.replace mem e1 e2; Some (Unit, mem, inp, out)
@@ -208,17 +205,15 @@ let rec step (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int lis
       | Some (e1', mem', inp', out') -> Some (New e1', mem', inp', out')
       | _ -> None)
 
+  (* TODO: SEQ1 *)
 
   (* TODO: SEQ *)
   | Seq (e1, e2) -> (match step e1 mem inp out with
       | Some (e1', mem', inp', out') -> Some (Seq(e1',e2), mem', inp', out')
       | _ -> None)
-    
-   (* TODO: SEQ1 *)
 
-  (* E-WHILE *) 
+  (* E-WHILE *)
   | Wh (e1, e2) -> Some (If (e1, Seq (e2, Wh (e1, e2)), Unit), mem, inp, out)
-                         
 
   (* TODO: PRINT-N *)
 
@@ -235,16 +230,16 @@ let rec step (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int lis
 
 (* casos de teste *)
 
-          (*         
-           
-            let  x: int     =  read() in 
-            let  z: ref int = new x in 
-            let  y: ref int = new 1 in 
-            
-            (while (!z > 0) (
-                   y :=  !y * !z;
-                   z :=  !z - 1);
-            print (! y))     
+(*
+
+  let  x: int     =  read() in
+  let  z: ref int = new x in
+  let  y: ref int = new 1 in
+
+  (while (!z > 0) (
+          y :=  !y * !z;
+          z :=  !z - 1);
+  print (! y))
 
 *)
 
@@ -255,8 +250,8 @@ let bdwhi = Seq(asgny, asgnz)
 let whi = Wh(cndwhi, bdwhi)
 let prt = Print(Deref (Id "y"))
 let seq = Seq(whi, prt)
-    
+
 let fat = Let("x", TyInt, Read, 
-              Let("z", TyRef TyInt, New (Id "x"), 
+              Let("z", TyRef TyInt, New (Id "x"),
                   Let("y", TyRef TyInt, New (Num 1),
                       seq)))
