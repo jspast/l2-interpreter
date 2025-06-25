@@ -59,7 +59,7 @@ let rec typeInfer (e:expr) : tipo option =
   (* TODO: T-VAR *)
   | Id e' -> None
 
-  (* T-LET *)
+  (* TODO: T-LET *)
   | Let (x, t, e1, e2) -> (match t, typeInfer e1, typeInfer e2 with
       | t, Some t1, Some t2 -> if t1=t
           then Some t2 else None
@@ -107,6 +107,7 @@ let is_value (e:expr) : bool =
   | Num e -> true
   | Bool e -> true
   | Id e -> true
+  | Unit e -> true
   | _ -> false 
 
 (* PROVAVELMENTE NAO ESTÁ CERTO DESCULPA *)
@@ -130,7 +131,7 @@ let rec subst (x:string) (v:expr) (e:expr) : expr =
 
 
 let rec step (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int list) :
-               (expr *     (string, expr) Hashtbl.t *     int list *     int list) option =
+  (expr *     (string, expr) Hashtbl.t *     int list *     int list) option =
   match e with
   (* OPx *)
 
@@ -198,7 +199,8 @@ let rec step (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int lis
 
   (* TODO: DEREF *)
 
-  (* TODO: NEW1 *)
+  (* TODO: NEW1 *) 
+  | New e1 -> Hashtbl.add mem _ e1
 
   (* TODO: NEW *)
   | New e1 -> (match step e1 mem inp out with
@@ -228,10 +230,10 @@ let rec step (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int lis
 
 
 let rec steps (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int list) :
-               (expr *     (string, expr) Hashtbl.t *     int list *     int list) =
+  (expr *     (string, expr) Hashtbl.t *     int list *     int list) =
   match step e mem inp out with
   | None -> (e, mem, inp, out)
-  | Some (e', mem', inp', out') -> steps e' mem' inp' out'
+  | Some (e', mem', inp', out') -> steps e' mem' inp' out' 
 
 
 (* casos de teste *)
