@@ -152,12 +152,12 @@ let rec step (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int lis
       | Or -> Some (Bool (e1 || e2), mem, inp, out)
       | _ -> None)
 
-(* OP2 *)
+  (* OP2 *)
   | Binop (op, e1, e2) when is_value e1 -> (match step e2 mem inp out with
       | Some (e2', mem', inp', out') -> Some (Binop (op, e1, e2'), mem', inp', out')
       | _ -> None)
 
-(* OP1 *)
+  (* OP1 *)
   | Binop (op, e1, e2) -> (match step e1 mem inp out with
       | Some (e1', mem', inp', out') -> Some (Binop (op, e1', e2), mem', inp', out')
       | _ -> None)
@@ -226,6 +226,12 @@ let rec step (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int lis
 
   | _ -> None
 
+
+let rec steps (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int list) :
+               (expr *     (string, expr) Hashtbl.t *     int list *     int list) =
+  match step e mem inp out with
+  | None -> (e, mem, inp, out)
+  | Some (e', mem', inp', out') -> steps e' mem' inp' out'
 
 
 (* casos de teste *)
