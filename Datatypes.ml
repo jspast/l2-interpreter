@@ -107,7 +107,7 @@ let is_value (e:expr) : bool =
   | Num e -> true
   | Bool e -> true
   | Id e -> true
-  | Unit e -> true
+  | Unit -> true
   | _ -> false 
 
 (* PROVAVELMENTE NAO ESTÁ CERTO DESCULPA *)
