@@ -15,7 +15,8 @@ type tipo =
 type expr =
   | Num of int
   | Bool of bool
-  | Id of string   (* endereço de memória *)
+  | Var of string
+  | Id of int   (* endereço de memória *)
   | If of expr * expr * expr
   | Binop of bop * expr * expr   (* operações binárias *)
   | Wh of expr * expr   (* while *)
@@ -27,6 +28,12 @@ type expr =
   | Seq of expr * expr
   | Read
   | Print of expr
+
+type memory = {
+    mutable num_locations: int;
+    mutable locations: int array;
+}
+
 
 let rec typeInfer (e:expr) : tipo option =
   match e with
@@ -58,6 +65,7 @@ let rec typeInfer (e:expr) : tipo option =
 
   (* TODO: T-VAR *)
   | Id e' -> None
+  | Var e' -> None
 
   (* TODO: T-LET *)
   | Let (x, t, e1, e2) -> (match t, typeInfer e1, typeInfer e2 with
@@ -102,20 +110,21 @@ let rec typeInfer (e:expr) : tipo option =
       | Some TyInt -> Some TyUnit
       | _ -> None)
 
+
 let is_value (e:expr) : bool =
   match e with
   | Num e -> true
   | Bool e -> true
   | Id e -> true
   | Unit -> true
-  | _ -> false 
+  | _ -> false
 
-(* PROVAVELMENTE NAO ESTÁ CERTO DESCULPA *)
+
 (* Função para substituição {v/x} e *)
 let rec subst (x:string) (v:expr) (e:expr) : expr =
   match e with
-  | Num _ | Bool _ | Unit -> e
-  | Id y -> if x = y then v else Id y
+  | Num _ | Bool _ | Id _ | Unit -> e
+  | Var y -> if x = y then v else Var y
   | If (e1, e2, e3) -> If (subst x v e1, subst x v e2, subst x v e3)
   | Binop (op, e1, e2) -> Binop (op, subst x v e1, subst x v e2)
   | Wh (e1, e2) -> Wh (subst x v e1, subst x v e2)
@@ -130,12 +139,12 @@ let rec subst (x:string) (v:expr) (e:expr) : expr =
   | Print e1 -> Print (subst x v e1)
 
 
-let rec step (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int list) :
-  (expr *     (string, expr) Hashtbl.t *     int list *     int list) option =
+let rec step (e:expr) (mem: memory) (inp:int list) (out:int list) :
+  (expr * memory * int list * int list) option =
   match e with
   (* OPx *)
 
-  (* Operacoes com argumentos inteiros *)
+  (* Operações com argumentos inteiros *)
   | Binop (op, Num e1, Num e2) -> (match op with
       | Sum -> Some (Num (e1 + e2), mem, inp, out)
       | Sub -> Some (Num (e1 - e2), mem, inp, out)
@@ -147,7 +156,7 @@ let rec step (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int lis
       | Gt -> Some (Bool (e1 > e2), mem, inp, out)
       | _ -> None)
 
-  (* Operacoes com argumentos booleanos *)
+  (* Operações com argumentos booleanos *)
   | Binop (op, Bool e1, Bool e2) -> (match op with
       | And -> Some (Bool (e1 && e2), mem, inp, out)
       | Or -> Some (Bool (e1 || e2), mem, inp, out)
@@ -174,7 +183,7 @@ let rec step (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int lis
       | Some (e1', mem', inp', out') -> Some (If (e1', e2, e3), mem', inp', out')
       | _ -> None)
 
-  (* TODO: E-LET2 *)
+  (* E-LET2 *)
   | Let (x, t, e1, e2) when is_value e1 -> Some (subst x e1 e2, mem, inp, out)
 
   (* E-LET1 *)
@@ -183,7 +192,9 @@ let rec step (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int lis
       | _ -> None)
 
   (* ATR1 *)
-  | Asg (Id e1, e2) when is_value e2 && Hashtbl.mem mem e1 -> Hashtbl.replace mem e1 e2; Some (Unit, mem, inp, out)
+  | Asg (Id e1, Num e2) when e1 < mem.num_locations ->
+      mem.locations.(e1) <- e2;
+      Some (Unit, mem, inp, out)
 
   (* ATR2 *)
   | Asg (Id e1, e2) -> (match step e2 mem inp out with
@@ -195,42 +206,56 @@ let rec step (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int lis
       | Some (e1', mem', inp', out') -> Some (Asg (e1', e2), mem', inp', out')
       | _ -> None)
 
-  (* TODO: DEREF1 *)
+  (* DEREF1 *)
+  | Deref (Id e1) when e1 < mem.num_locations -> Some (Num mem.locations.(e1), mem, inp, out)
 
-  (* TODO: DEREF *)
+  (* DEREF *)
+  | Deref e1 -> (match step e1 mem inp out with
+      | Some (e1', mem', inp', out') -> Some (Deref e1', mem', inp', out')
+      | _ -> None)
 
-  (* TODO: NEW1 *) 
-  | New e1 -> Hashtbl.add mem _ e1
+  (* NEW1 *)
+  | New (Num e1) ->
+      let location = mem.num_locations in
+      mem.locations.(location) <- e1;
+      mem.num_locations <- mem.num_locations + 1;
+      Some (Id location, mem, inp, out);
 
-  (* TODO: NEW *)
+  (* NEW *)
   | New e1 -> (match step e1 mem inp out with
       | Some (e1', mem', inp', out') -> Some (New e1', mem', inp', out')
       | _ -> None)
 
-  (* TODO: SEQ1 *)
+  (* SEQ1 *)
+  | Seq (Unit, e2) -> Some (e2, mem, inp, out)
 
-  (* TODO: SEQ *)
+  (* SEQ *)
   | Seq (e1, e2) -> (match step e1 mem inp out with
-      | Some (e1', mem', inp', out') -> Some (Seq(e1',e2), mem', inp', out')
+      | Some (e1', mem', inp', out') -> Some (Seq (e1',e2), mem', inp', out')
       | _ -> None)
 
   (* E-WHILE *)
   | Wh (e1, e2) -> Some (If (e1, Seq (e2, Wh (e1, e2)), Unit), mem, inp, out)
 
-  (* TODO: PRINT-N *)
+  (* PRINT-N *)
+  | Print (Num e1) -> Some (Unit, mem, inp, out @ [e1])
 
-  (* TODO: PRINT *)
+  (* PRINT *)
   | Print e1 -> (match step e1 mem inp out with
       | Some (e1', mem', inp', out') -> Some (Print e1', mem', inp', out')
       | _ -> None)
 
-  (* TODO: READ *)
+  (* READ *)
+  | Read -> Some (
+      (match inp with
+        | h :: t -> Num h
+        | _ -> Unit), mem, inp, out)
 
   | _ -> None
 
 
-let rec steps (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int list) :
-  (expr *     (string, expr) Hashtbl.t *     int list *     int list) =
+let rec steps (e:expr) (mem: memory) (inp:int list) (out:int list) :
+  (expr * memory * int list * int list) =
   match step e mem inp out with
   | None -> (e, mem, inp, out)
   | Some (e', mem', inp', out') -> steps e' mem' inp' out' 
@@ -251,15 +276,15 @@ let rec steps (e:expr) (mem:(string, expr) Hashtbl.t) (inp:int list) (out:int li
 
 *)
 
-let cndwhi = Binop(Gt, Deref (Id "z"),Num 0) (* expressão: !z > 0 *)
-let asgny = Asg(Id "y", Binop(Mul, Deref (Id "y"),Deref(Id "z"))) (* expressão: y =  !y . !z *)
-let asgnz = Asg(Id "z", Binop(Sub, Deref (Id "z"),Num 1))
+let cndwhi = Binop(Gt, Deref (Var "z"),Num 0)
+let asgny = Asg(Var "y", Binop(Mul, Deref (Var "y"),Deref(Var "z")))
+let asgnz = Asg(Var "z", Binop(Sub, Deref (Var "z"),Num 1))
 let bdwhi = Seq(asgny, asgnz) 
 let whi = Wh(cndwhi, bdwhi)
-let prt = Print(Deref (Id "y"))
+let prt = Print(Deref (Var "y"))
 let seq = Seq(whi, prt)
 
-let fat = Let("x", TyInt, Read, 
-              Let("z", TyRef TyInt, New (Id "x"),
+let fat = Let("x", TyInt, Read,
+              Let("z", TyRef TyInt, New (Var "x"),
                   Let("y", TyRef TyInt, New (Num 1),
                       seq)))
