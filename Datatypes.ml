@@ -265,10 +265,9 @@ let rec step (e:expr) (mem: memory) (inp:int list) (out:int list) :
       | _ -> None)
 
   (* READ *)
-  | Read -> Some (
-      (match inp with
-       | h :: t -> Num h
-       | _ -> Unit), mem, inp, out) 
+  | Read -> (match inp with
+      | h :: t -> Some (Num h, mem, t, out)
+      | _ -> None)
 
   (* E-FOR *)
   | For (e1, e2, e3, e4) -> Some (Seq (e1, Wh (e2, Seq (e4, e3))), mem, inp, out)
@@ -280,7 +279,7 @@ let rec steps (e:expr) (mem: memory) (inp:int list) (out:int list) :
   (expr * memory * int list * int list) =
   match step e mem inp out with
   | None -> (e, mem, inp, out)
-  | Some (e', mem', inp', out') -> steps e' mem' inp' out' 
+  | Some (e', mem', inp', out') -> steps e' mem' inp' out'
 
 
 (* casos de teste *)
@@ -310,7 +309,7 @@ let fat = Let("x", TyInt, Read,
               Let("z", TyRef TyInt, New (Id "x"),
                   Let("y", TyRef TyInt, New (Num 1),
                       seq)))
-  
+
 let for_expr =
   Let("i", TyRef TyInt, New (Num 0),
     For (
