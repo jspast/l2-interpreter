@@ -15,8 +15,8 @@ type tipo =
 type expr =
   | Num of int
   | Bool of bool
-  | Var of string
-  | Id of int   (* endereço de memória *)
+  | Loc of int   (* location *)
+  | Id of string   (* endereço de memória *)
   | If of expr * expr * expr
   | Binop of bop * expr * expr   (* operações binárias *)
   | Wh of expr * expr   (* while *)
@@ -74,8 +74,8 @@ let rec typeInfer (env: environment) (e:expr) : tipo option =
       | _  -> None)
 
   (* T-VAR *)
-  | Var x -> lookup env x
-  | Id _ -> None
+  | Id x -> lookup env x
+  | Loc _ -> None
 
   (* T-LET *)
   | Let (x, t, e1, e2) ->
@@ -133,16 +133,16 @@ let is_value (e:expr) : bool =
   match e with
   | Num e -> true
   | Bool e -> true
-  | Id e -> true
   | Unit -> true
+  | Loc e -> true
   | _ -> false
 
 
 (* Função para substituição {v/x} e *)
 let rec subst (x:string) (v:expr) (e:expr) : expr =
   match e with
-  | Num _ | Bool _ | Id _ | Unit -> e
-  | Var y -> if x = y then v else Var y
+  | Num _ | Bool _ | Unit | Loc _ -> e
+  | Id y -> if x = y then v else Id y
   | If (e1, e2, e3) -> If (subst x v e1, subst x v e2, subst x v e3)
   | Binop (op, e1, e2) -> Binop (op, subst x v e1, subst x v e2)
   | Wh (e1, e2) -> Wh (subst x v e1, subst x v e2)
@@ -211,13 +211,13 @@ let rec step (e:expr) (mem: memory) (inp:int list) (out:int list) :
       | _ -> None)
 
   (* ATR1 *)
-  | Asg (Id e1, Num e2) when e1 < mem.num_locations ->
+  | Asg (Loc e1, Num e2) when e1 < mem.num_locations ->
       mem.locations.(e1) <- e2;
       Some (Unit, mem, inp, out)
 
   (* ATR2 *)
-  | Asg (Id e1, e2) -> (match step e2 mem inp out with
-      | Some (e2', mem', inp', out') -> Some (Asg (Id e1, e2'), mem', inp', out')
+  | Asg (Loc e1, e2) -> (match step e2 mem inp out with
+      | Some (e2', mem', inp', out') -> Some (Asg (Loc e1, e2'), mem', inp', out')
       | _ -> None)
 
   (* ATR *)
@@ -226,7 +226,7 @@ let rec step (e:expr) (mem: memory) (inp:int list) (out:int list) :
       | _ -> None)
 
   (* DEREF1 *)
-  | Deref (Id e1) when e1 < mem.num_locations -> Some (Num mem.locations.(e1), mem, inp, out)
+  | Deref (Loc e1) when e1 < mem.num_locations -> Some (Num mem.locations.(e1), mem, inp, out)
 
   (* DEREF *)
   | Deref e1 -> (match step e1 mem inp out with
@@ -238,7 +238,7 @@ let rec step (e:expr) (mem: memory) (inp:int list) (out:int list) :
       let location = mem.num_locations in
       mem.locations.(location) <- e1;
       mem.num_locations <- mem.num_locations + 1;
-      Some (Id location, mem, inp, out);
+      Some (Loc location, mem, inp, out);
 
   (* NEW *)
   | New e1 -> (match step e1 mem inp out with
@@ -298,23 +298,23 @@ let rec steps (e:expr) (mem: memory) (inp:int list) (out:int list) :
 
 *)
 
-let cndwhi = Binop(Gt, Deref (Var "z"),Num 0)
-let asgny = Asg(Var "y", Binop(Mul, Deref (Var "y"),Deref(Var "z")))
-let asgnz = Asg(Var "z", Binop(Sub, Deref (Var "z"),Num 1))
+let cndwhi = Binop(Gt, Deref (Id "z"),Num 0)
+let asgny = Asg(Id "y", Binop(Mul, Deref (Id "y"),Deref(Id "z")))
+let asgnz = Asg(Id "z", Binop(Sub, Deref (Id "z"),Num 1))
 let bdwhi = Seq(asgny, asgnz) 
 let whi = Wh(cndwhi, bdwhi)
-let prt = Print(Deref (Var "y"))
+let prt = Print(Deref (Id "y"))
 let seq = Seq(whi, prt)
 
 let fat = Let("x", TyInt, Read,
-              Let("z", TyRef TyInt, New (Var "x"),
+              Let("z", TyRef TyInt, New (Id "x"),
                   Let("y", TyRef TyInt, New (Num 1),
                       seq)))
   
 let for_expr =
   Let("i", TyRef TyInt, New (Num 0),
     For (
-      Asg (Var "i", Num 0),                                  (* inicialização: i = 0 *)
-      Binop (Lt, Deref (Var "i"), Num 3),                    (* condição: i < 3 *)
-      Asg (Var "i", Binop (Sum, Deref (Var "i"), Num 1)),    (* incremento: i = i + 1 *)
-      Print (Deref (Var "i"))))                              (* corpo: print(i) *)
+      Asg (Id "i", Num 0),                                  (* inicialização: i = 0 *)
+      Binop (Lt, Deref (Id "i"), Num 3),                    (* condição: i < 3 *)
+      Asg (Id "i", Binop (Sum, Deref (Id "i"), Num 1)),     (* incremento: i = i + 1 *)
+      Print (Deref (Id "i"))))                              (* corpo: print(i) *)
