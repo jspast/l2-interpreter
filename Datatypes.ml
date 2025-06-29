@@ -28,14 +28,29 @@ type expr =
   | Seq of expr * expr
   | Read
   | Print of expr
+  | For of expr * expr * expr * expr (* como em C: for (e1; e2; e3) { e4 } *)
 
 type memory = {
-    mutable num_locations: int;
-    mutable locations: int array;
+  mutable num_locations: int;
+  mutable locations: int array;
 }
 
+(* Ambiente de tipos é uma lista de pares, onde cada par é uma variável e seu tipo associado *)
+type tipo_env = (string * tipo) list
+  
 
-let rec typeInfer (e:expr) : tipo option =
+(* Procura o tipo associado á variável x no ambiente env *)
+let rec lookup (env : tipo_env) (x : string) : tipo option =
+  match env with
+  | [] -> None
+  | (y, t) :: rest -> if x = y then Some t else lookup rest x
+
+(* Adiciona uma nova extensão x:t no env *)                    
+let extend (env : tipo_env) (x : string) (t : tipo) : tipo_env =
+  (x, t) :: env
+
+
+let rec typeInfer (env: tipo_env) (e:expr) : tipo option =
   match e with
   (* T-INT *)
   | Num n -> Some TyInt
@@ -45,60 +60,61 @@ let rec typeInfer (e:expr) : tipo option =
 
   (* T-OPx *)
   | Binop (op, e1, e2) -> (match op with
-      | Sum | Sub | Mul | Div -> (match typeInfer e1, typeInfer e2 with
+      | Sum | Sub | Mul | Div -> (match typeInfer env e1, typeInfer env e2 with
           | Some TyInt, Some TyInt -> Some TyInt
           | _ -> None)
-      | Eq | Neq | Lt | Gt -> (match typeInfer e1, typeInfer e2 with
+      | Eq | Neq | Lt | Gt -> (match typeInfer env e1, typeInfer env e2 with
           | Some TyInt, Some TyInt -> Some TyBool
           | _ -> None)
-      | And | Or -> (match typeInfer e1, typeInfer e2 with 
+      | And | Or -> (match typeInfer env e1, typeInfer env e2 with 
           | Some TyBool, Some TyBool -> Some TyBool 
           | _ -> None))
 
   (* T-IF *)
-  | If (e1, e2, e3) -> (match typeInfer e1 with
-      | Some TyBool -> (match typeInfer e2, typeInfer e3 with
+  | If (e1, e2, e3) -> (match typeInfer env e1 with
+      | Some TyBool -> (match typeInfer env e2, typeInfer env e3 with
           | Some t2, Some t3 -> if t2=t3
               then Some t2 else None
           | _ -> None)
       | _  -> None)
 
-  (* TODO: T-VAR *)
-  | Id e' -> None
-  | Var e' -> None
+  (* T-VAR *)
+  | Var x -> lookup env x
 
-  (* TODO: T-LET *)
-  | Let (x, t, e1, e2) -> (match t, typeInfer e1, typeInfer e2 with
-      | t, Some t1, Some t2 -> if t1=t
-          then Some t2 else None
-      | _ -> None)
+  (* T-LET *)
+  | Let (x, t, e1, e2) ->
+      (match typeInfer env e1 with
+       | Some t1 when t1 = t ->
+           let env' = extend env x t in
+           typeInfer env' e2
+       | _ -> None)
 
-  (* T-ATR *)
-  | Asg (e1, e2) -> (match typeInfer e1, typeInfer e2 with
+  (* T-ATR *) 
+  | Asg (e1, e2) -> (match typeInfer env e1, typeInfer env e2 with
       | Some TyRef t1, Some t2 -> if t1=t2
           then Some TyUnit else None
       | _ -> None)
 
   (* T-DEREF *)
-  | Deref e -> (match typeInfer e with
+  | Deref e -> (match typeInfer env e with
       | Some TyRef t -> Some t
       | _ -> None)
 
   (* T-NEW *)
-  | New e -> (match typeInfer e with
-      | Some t -> Some t
+  | New e -> (match typeInfer env e with
+      | Some t -> Some (TyRef t)
       | _ -> None)
 
   (* T-UNIT *)
   | Unit -> Some TyUnit
 
   (* T-WHILE *)
-  | Wh (e1, e2) -> (match typeInfer e1, typeInfer e2 with
+  | Wh (e1, e2) -> (match typeInfer env e1, typeInfer env e2 with
       | Some TyBool, Some TyUnit -> Some TyUnit
       | _ -> None)
 
   (* T-SEQ *)
-  | Seq (e1, e2) -> (match typeInfer e1, typeInfer e2 with
+  | Seq (e1, e2) -> (match typeInfer env e1, typeInfer env e2 with
       | Some TyUnit, Some t -> Some t
       | _ -> None)
 
@@ -106,9 +122,15 @@ let rec typeInfer (e:expr) : tipo option =
   | Read -> Some TyInt
 
   (* T-PRINT *)
-  | Print e -> (match typeInfer e with
+  | Print e -> (match typeInfer env e with
       | Some TyInt -> Some TyUnit
       | _ -> None)
+                 
+  (* T-FOR *)  
+  | For (e1, e2, e3, e4) ->
+      (match typeInfer env e1, typeInfer env e2, typeInfer env e3, typeInfer env e4 with
+       | Some _, Some TyBool, Some _, Some _ -> Some TyUnit
+       | _ -> None)
 
 
 let is_value (e:expr) : bool =
@@ -248,8 +270,13 @@ let rec step (e:expr) (mem: memory) (inp:int list) (out:int list) :
   (* READ *)
   | Read -> Some (
       (match inp with
-        | h :: t -> Num h
-        | _ -> Unit), mem, inp, out)
+       | h :: t -> Num h
+       | _ -> Unit), mem, inp, out) 
+  
+
+  (* E-FOR *)        
+  | For (e1, e2, e3, e4) -> Some (Seq (e1, Wh (e2, Seq (e4, e3))), mem, inp, out)
+      
 
   | _ -> None
 
@@ -288,3 +315,11 @@ let fat = Let("x", TyInt, Read,
               Let("z", TyRef TyInt, New (Var "x"),
                   Let("y", TyRef TyInt, New (Num 1),
                       seq)))
+  
+let for_expr =
+  For (
+    Asg (Var "i", Num 0),                                  (* inicialização: i = 0 *)
+    Binop (Lt, Var "i", Num 3),                            (* condição: i < 3 *)
+    Asg (Var "i", Binop (Sum, Var "i", Num 1)),            (* incremento: i = i + 1 *)
+    Print (Var "i"))                                        (* corpo: print(i) *)
+                                                           
