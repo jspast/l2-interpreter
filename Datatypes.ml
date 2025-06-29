@@ -41,7 +41,7 @@ type memory = {
 let rec lookup (env : environment) (x : string) : tipo option =
   Hashtbl.find_opt env x
 
-(* Adiciona uma nova extensão x:t no env *)                    
+(* Adiciona uma nova extensão x:t no env *)
 let extend (env : environment) (x : string) (t : tipo) : environment =
   Hashtbl.add env x t; env
 
@@ -121,8 +121,8 @@ let rec typeInfer (env: environment) (e:expr) : tipo option =
   | Print e -> (match typeInfer env e with
       | Some TyInt -> Some TyUnit
       | _ -> None)
-                 
-  (* T-FOR *)  
+
+  (* T-FOR *)
   | For (e1, e2, e3, e4) ->
       (match typeInfer env e1, typeInfer env e2, typeInfer env e3, typeInfer env e4 with
        | Some _, Some TyBool, Some _, Some _ -> Some TyUnit
@@ -155,6 +155,7 @@ let rec subst (x:string) (v:expr) (e:expr) : expr =
   | Seq (e1, e2) -> Seq (subst x v e1, subst x v e2)
   | Read -> Read
   | Print e1 -> Print (subst x v e1)
+  | For (e1, e2, e3, e4) -> For (subst x v e1, subst x v e2, subst x v e3, subst x v e4)
 
 
 let rec step (e:expr) (mem: memory) (inp:int list) (out:int list) :
@@ -268,11 +269,9 @@ let rec step (e:expr) (mem: memory) (inp:int list) (out:int list) :
       (match inp with
        | h :: t -> Num h
        | _ -> Unit), mem, inp, out) 
-  
 
-  (* E-FOR *)        
+  (* E-FOR *)
   | For (e1, e2, e3, e4) -> Some (Seq (e1, Wh (e2, Seq (e4, e3))), mem, inp, out)
-      
 
   | _ -> None
 
@@ -313,9 +312,9 @@ let fat = Let("x", TyInt, Read,
                       seq)))
   
 let for_expr =
-  For (
-    Asg (Var "i", Num 0),                                  (* inicialização: i = 0 *)
-    Binop (Lt, Var "i", Num 3),                            (* condição: i < 3 *)
-    Asg (Var "i", Binop (Sum, Var "i", Num 1)),            (* incremento: i = i + 1 *)
-    Print (Var "i"))                                        (* corpo: print(i) *)
-                                                           
+  Let("i", TyRef TyInt, New (Num 0),
+    For (
+      Asg (Var "i", Num 0),                                  (* inicialização: i = 0 *)
+      Binop (Lt, Deref (Var "i"), Num 3),                    (* condição: i < 3 *)
+      Asg (Var "i", Binop (Sum, Deref (Var "i"), Num 1)),    (* incremento: i = i + 1 *)
+      Print (Deref (Var "i"))))                              (* corpo: print(i) *)
