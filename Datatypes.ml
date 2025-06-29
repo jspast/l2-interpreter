@@ -30,27 +30,22 @@ type expr =
   | Print of expr
   | For of expr * expr * expr * expr (* como em C: for (e1; e2; e3) { e4 } *)
 
+type environment = (string, tipo) Hashtbl.t
+
 type memory = {
   mutable num_locations: int;
   mutable locations: int array;
 }
 
-(* Ambiente de tipos é uma lista de pares, onde cada par é uma variável e seu tipo associado *)
-type tipo_env = (string * tipo) list
-  
-
 (* Procura o tipo associado á variável x no ambiente env *)
-let rec lookup (env : tipo_env) (x : string) : tipo option =
-  match env with
-  | [] -> None
-  | (y, t) :: rest -> if x = y then Some t else lookup rest x
+let rec lookup (env : environment) (x : string) : tipo option =
+  Hashtbl.find_opt env x
 
 (* Adiciona uma nova extensão x:t no env *)                    
-let extend (env : tipo_env) (x : string) (t : tipo) : tipo_env =
-  (x, t) :: env
+let extend (env : environment) (x : string) (t : tipo) : environment =
+  Hashtbl.add env x t; env
 
-
-let rec typeInfer (env: tipo_env) (e:expr) : tipo option =
+let rec typeInfer (env: environment) (e:expr) : tipo option =
   match e with
   (* T-INT *)
   | Num n -> Some TyInt
@@ -80,6 +75,7 @@ let rec typeInfer (env: tipo_env) (e:expr) : tipo option =
 
   (* T-VAR *)
   | Var x -> lookup env x
+  | Id _ -> None
 
   (* T-LET *)
   | Let (x, t, e1, e2) ->
