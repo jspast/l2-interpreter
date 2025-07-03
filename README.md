@@ -34,10 +34,10 @@ Para importar o código do interpretador, execute:
 
 Para utilizar o sistema de tipos, é preciso primeiro definir um ambiente.
 
-Para criar um ambiente vazio com 10 posições (que cresce automaticamente conforme a necessidade), execute:
+Um ambiente é uma lista, que pode ser definida naturalmente com a [sintaxe de OCaml para listas](https://cs3110.github.io/textbook/chapters/data/lists.html#building-lists):
 
 ```ocaml
-let env = Hashtbl.create 10;;
+let env = [];;
 ```
 
 A inferência de tipos é realizada por meio da função typeInfer:
@@ -53,15 +53,14 @@ typeInfer env (Binop(Gt, Num 2, Num 1));;
 - : tipo option = Some TyBool
 ```
 
-
 #### Interpretador small-step
 
 Para utilizar o interpretador small-step, é preciso primeiro definir a memória e as listas de entrada e saída.
 
-Para criar uma memória com 10 posições (tamanho fixo) inicializadas com o valor 0, execute:
+Para criar uma memória com 5 posições (tamanho fixo) inicializadas com o valor inteiro 0, execute:
 
 ```ocaml
-let mem = {num_locations=0; locations=Array.make 10 0};;
+let mem = {num_locations=0; locations=Array.make 5 (Num 0)};;
 ```
 
 As listas de entrada e saída podem ser definidas naturalmente com a [sintaxe de OCaml para listas](https://cs3110.github.io/textbook/chapters/data/lists.html#building-lists).
@@ -83,6 +82,7 @@ Por exemplo, para o programa que implementa o fatorial do primeiro valor da list
 ```ocaml
 steps fat mem [5] [];;
 - : expr * memory * int list * int list =
-(Unit, {num_locations = 2; locations = [|0; 120; 0; 0; 0; 0; 0; 0; 0; 0|]},
+(Unit,
+ {num_locations = 2; locations = [|Num 0; Num 120; Num 0; Num 0; Num 0|]}, 
  [], [120])
 ```
