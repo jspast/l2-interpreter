@@ -16,7 +16,7 @@ type expr =
   | Num of int
   | Bool of bool
   | Loc of int   (* location *)
-  | Id of string   (* endereço de memória *)
+  | Id of string   (* variável *)
   | If of expr * expr * expr
   | Binop of bop * expr * expr   (* operações binárias *)
   | Wh of expr * expr   (* while *)
@@ -34,7 +34,7 @@ type environment = (string * tipo) list
 
 type memory = {
   mutable num_locations: int;
-  mutable locations: int array;
+  mutable locations: expr array;
 }
 
 (* Procura o tipo associado á variável x no ambiente env *)
@@ -213,7 +213,7 @@ let rec step (e:expr) (mem: memory) (inp:int list) (out:int list) :
       | _ -> None)
 
   (* ATR1 *)
-  | Asg (Loc e1, Num e2) when e1 < mem.num_locations ->
+  | Asg (Loc e1, e2) when e1 < mem.num_locations && is_value e2 ->
       mem.locations.(e1) <- e2;
       Some (Unit, mem, inp, out)
 
@@ -228,7 +228,7 @@ let rec step (e:expr) (mem: memory) (inp:int list) (out:int list) :
       | _ -> None)
 
   (* DEREF1 *)
-  | Deref (Loc e1) when e1 < mem.num_locations -> Some (Num mem.locations.(e1), mem, inp, out)
+  | Deref (Loc e1) when e1 < mem.num_locations -> Some (mem.locations.(e1), mem, inp, out)
 
   (* DEREF *)
   | Deref e1 -> (match step e1 mem inp out with
@@ -236,7 +236,7 @@ let rec step (e:expr) (mem: memory) (inp:int list) (out:int list) :
       | _ -> None)
 
   (* NEW1 *)
-  | New (Num e1) ->
+  | New e1 when is_value e1 ->
       let location = mem.num_locations in
       mem.locations.(location) <- e1;
       mem.num_locations <- mem.num_locations + 1;
