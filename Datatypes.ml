@@ -127,7 +127,7 @@ let rec typeInfer (env: environment) (e:expr) : tipo option =
   (* T-FOR *)
   | For (e1, e2, e3, e4) ->
       (match typeInfer env e1, typeInfer env e2, typeInfer env e3, typeInfer env e4 with
-       | Some _, Some TyBool, Some _, Some _ -> Some TyUnit
+       | Some TyUnit, Some TyBool, Some TyUnit, Some TyUnit -> Some TyUnit
        | _ -> None)
 
 
