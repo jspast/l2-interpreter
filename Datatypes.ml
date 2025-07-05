@@ -124,7 +124,26 @@ let rec typeInfer (env: environment) (e:expr) : tipo option =
       | Some TyInt -> Some TyUnit
       | _ -> None)
 
-  (* T-FOR *)
+  (* T-FOR 
+    
+     Esta regra define o tipo da construção `For(e1, e2, e3, e4)`.
+
+     A expressão `For(e1, e2, e3, e4)` representa um laço imperativo com os seguintes componentes:
+       - e1: expressão de inicialização (executada uma vez antes do loop)
+       - e2: condição booleana (avaliada a cada iteração para decidir se continua)
+       - e3: corpo do laço (executado a cada iteração se a condição for verdadeira)
+       - e4: incremento (executado ao final de cada iteração)
+
+     Regras de tipagem:
+       - e1 deve ter tipo TyUnit: a inicialização pode ser qualquer expressão que produza efeito (como uma atribuição)
+       - e2 deve ter tipo TyBool: a condição de parada do laço precisa ser booleana
+       - e3 deve ter tipo TyUnit: o corpo do laço é imperativo (efeitos colaterais) e não retorna valor útil
+       - e4 deve ter tipo TyUnit: o incremento também é imperativo (como uma atribuição)
+
+     Se todas essas condições forem satisfeitas, o tipo do `For` será TyUnit.
+
+*)
+
   | For (e1, e2, e3, e4) ->
       (match typeInfer env e1, typeInfer env e2, typeInfer env e3, typeInfer env e4 with
        | Some TyUnit, Some TyBool, Some TyUnit, Some TyUnit -> Some TyUnit
@@ -288,14 +307,14 @@ let rec steps (e:expr) (mem: memory) (inp:int list) (out:int list) :
 
 (*
 
-  let  x: int     =  read() in
-  let  z: ref int = new x in
-  let  y: ref int = new 1 in
+let  x: int     =  read() in
+let  z: ref int = new x in
+let  y: ref int = new 1 in
 
-  (while (!z > 0) (
-          y :=  !y * !z;
-          z :=  !z - 1);
-  print (! y))
+(while (!z > 0) (
+     y :=  !y * !z;
+     z :=  !z - 1);
+   print (! y))
 
 *)
 
@@ -314,84 +333,84 @@ let fat = Let("x", TyInt, Read,
 
 let for_expr =
   Let("i", TyRef TyInt, New (Num 0),
-    For (
-      Asg (Id "i", Num 0),                                  (* inicialização: i = 0 *)
-      Binop (Lt, Deref (Id "i"), Num 3),                    (* condição: i < 3 *)
-      Asg (Id "i", Binop (Sum, Deref (Id "i"), Num 1)),     (* incremento: i = i + 1 *)
-      Print (Deref (Id "i"))))                              (* corpo: print(i) *)
+      For (
+        Asg (Id "i", Num 0),                                  (* inicialização: i = 0 *)
+        Binop (Lt, Deref (Id "i"), Num 3),                    (* condição: i < 3 *)
+        Asg (Id "i", Binop (Sum, Deref (Id "i"), Num 1)),     (* incremento: i = i + 1 *)
+        Print (Deref (Id "i"))))                              (* corpo: print(i) *)
 
 let ex1 =
   Let("x",TyRef(TyInt), New(Num(3)),
-    Seq( 
+      Seq( 
         Asg(Id("x") , Binop(Sum,Read,Num(1))),
         Print(Deref(Id("x")))
       )
-  )
+     )
 ;;
 
 let ex2 =
- Let("x",TyBool, Bool(true),
-  Seq(
-      Let("x",TyInt, Num(3),
-         Print(Binop(Sum,Id("x"),Num(1)))
-       )
-  ,
-    Id("x")
-  )
-)
+  Let("x",TyBool, Bool(true),
+      Seq(
+        Let("x",TyInt, Num(3),
+            Print(Binop(Sum,Id("x"),Num(1)))
+           )
+        ,
+        Id("x")
+      )
+     )
 ;;
 
 let ex3 = If(Binop(Lt,Num(3),Num(5)),
-   Bool(true),
-   Unit)
+             Bool(true),
+             Unit)
 ;;
 
 let ex4 =
-Let("x",TyInt,Num(4),
-  Let("y",TyRef TyInt,New(Num(0)),
-    Let("a",TyRef TyInt,New(Num(0)),
-      Wh(Binop(Lt,Deref(Id("y")),Id("x")),
-        Seq(
-          Asg(Id("y"),Binop(Sum,Deref(Id("y")),Num(1)))
-        ,
-          Asg(Id("a"),Binop(Sum,Deref(Id("a")),Deref(Id("y"))))
-        )
-      )
-    )
-  )
-)
+  Let("x",TyInt,Num(4),
+      Let("y",TyRef TyInt,New(Num(0)),
+          Let("a",TyRef TyInt,New(Num(0)),
+              Wh(Binop(Lt,Deref(Id("y")),Id("x")),
+                 Seq(
+                   Asg(Id("y"),Binop(Sum,Deref(Id("y")),Num(1)))
+                   ,
+                   Asg(Id("a"),Binop(Sum,Deref(Id("a")),Deref(Id("y"))))
+                 )
+                )
+             )
+         )
+     )
 ;;
 
 let ex5 =
-Let ("y", TyRef TyBool, New(Bool(true)),
-  If(
-      Binop(Lt,Deref(New(Num(5))), Num(2)),
-      New(Bool(false)),
-      Id("y")
-  )
-)
+  Let ("y", TyRef TyBool, New(Bool(true)),
+       If(
+         Binop(Lt,Deref(New(Num(5))), Num(2)),
+         New(Bool(false)),
+         Id("y")
+       )
+      )
 ;;
 
 let ex6 =
-Let("x",TyRef TyInt, New(Num(0)),
-  Let("a",TyRef TyInt,New(Num(1)),
-   Seq(
-      Asg(Id("x"), Read)
-    ,
-    Seq(
-      Wh(
-         Binop(Neq, Deref(Id("x")), Num(0) )
-        ,
-        Seq(
-         Asg(Id("a"),Binop(Mul,Deref(Id("a")),Deref(Id("x"))))
-        ,
-         Asg(Id("x"),Binop(Sub,Deref(Id("x")),Num(1)))
-        )
-      )
-    ,
-      Print(Deref(Id("a")))
-    )
-   )
-  )
-)
+  Let("x",TyRef TyInt, New(Num(0)),
+      Let("a",TyRef TyInt,New(Num(1)),
+          Seq(
+            Asg(Id("x"), Read)
+            ,
+            Seq(
+              Wh(
+                Binop(Neq, Deref(Id("x")), Num(0) )
+                ,
+                Seq(
+                  Asg(Id("a"),Binop(Mul,Deref(Id("a")),Deref(Id("x"))))
+                  ,
+                  Asg(Id("x"),Binop(Sub,Deref(Id("x")),Num(1)))
+                )
+              )
+              ,
+              Print(Deref(Id("a")))
+            )
+          )
+         )
+     )
 ;;
